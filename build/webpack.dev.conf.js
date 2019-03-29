@@ -39,6 +39,6 @@ const webpackConfigDev = {
                 changeOrigin: true
             }
         }
-    },
-}
+    }
+};
 module.exports = merge(webpackConfigBase, webpackConfigDev);

@@ -1,29 +1,137 @@
 # webpack4_mpa_demo
-webpack4搭建多页面多环境demo
+webpack4搭建传统多页面多环境
 
-## v 1.0.1 改动
-增加px2rem，以及rem.js文件（以750设计稿为准）
-使用时引入rem.js，设计稿多少px，css就写多少px，自动转换为rem
+### 动态配置入口
+配置过webpack的同学都知道,我们每增加页面，就必须新加一个入口，这样页面少还好说，但是如果页面多，那么我们配置起来就比较麻烦，所以
+我们需要用到动态配置入口,函数如下：
+```angular2html
+// 动态配置入口
+function getEntry() {
+    const entry = {};
+    //读取src目录所有page入口，这里js名字与page页面名字相同
+    glob.sync('./src/js/*.js')
+        .forEach(function (name) {
+            const start = name.indexOf('src/') + 4,
+                end = name.length - 3;
+            const eArr = [];
+            let n = name.slice(start, end);
+            n = n.split('/')[1];
+            eArr.push(name);
+            entry[n] = eArr;
+        });
+    return entry;
+}
+```
+同样，我们也需要动态生成html
+```angular2html
+// 获取html-webpack-plugin参数的方法
+const getHtmlConfig = function (name, chunks) {
+    return {
+        template: `./src/pages/${name}.html`,
+        filename: `${name}.html`,
+        // favicon: './favicon.ico',
+        // title: title,
+        inject: true,
+        hash: false, //开启hash  ?[hash]
+        chunks: chunks,
+        minify: process.env.NODE_ENV !== "production" ? false : {
+            removeComments: true, //移除HTML中的注释
+            collapseWhitespace: true, //折叠空白区域 也就是压缩代码
+            removeAttributeQuotes: true, //去除属性引用
+        },
+    };
+};
+const htmlArray = [];
+Object.keys(entryObj).forEach(element => {
+    htmlArray.push({
+        _html: element,
+        title: '',
+        chunks: ['vendor', 'common', element]
+    })
+});
 
-## v 1.0.2 改动
-添加公共代码提取，minChunks: 2
+//自动生成html模板
+htmlArray.forEach((element) => {
+    module.exports.plugins.push(new htmlWebpackPlugin(getHtmlConfig(element._html, element.chunks)));
+});
+```
 
-## v 1.0.3 改动
-增加本地调试方法
-npm run local
-其余方法npm run dev, npm run test等均为build方法，如需变更，请去package.json中以及env-config中自行修改
+### 配置loader
+配置loader,这里就不多说了，需要注意的就是css，需要在对应的js里面用require或import引入，如果不这样使用，打包的时候是不会讲对应的css打包的
+```angular2html
+{
+        test: /\.(css|scss|sass)$/,
+        // 区别开发环境和生成环境
+        use: process.env.NODE_ENV === "development" ? ["style-loader", "css-loader", "sass-loader", "postcss-loader"] : extractTextPlugin.extract({
+            fallback: "style-loader",
+            use: ["css-loader", "sass-loader", "postcss-loader"],
+            publicPath: "../"
+        })
+    },
+```
+这里用到了postcss-loader,需要配置一个postcss.config.js
+```angular2html
+module.exports = {
+	plugins: [
+		//自动添加css前缀
+        require('autoprefixer')
+	]
+};
+```
+要在package.json里面写上这个才会管用
+```angular2html
+"browserslist": [
+    "defaults",
+    "not ie < 11",
+    "last 2 versions",
+    "> 1%",
+    "iOS 7",
+    "last 3 iOS versions"
+  ]
+```
+### 配置插件plugins
+```angular2html
+plugins: [
+        // 全局暴露统一入口
+        new webpack.ProvidePlugin({
 
-## v 1.0.4 改动
-#### 减少部分代码
-#### 升级webpack到4.29.6
-#### 更改部分依赖位置
-##### 个人觉得一般情况下，无需env-config文件（请求地址可以从window.location.origin中获取到），留着只是为了一些特殊情况。
-##### 当你不需要env-config文件时，只需区分是npm run dev或npm run build就可以
-##### 例如当我在dev、test环境应该执行的是npm run dev，在staging、灰度、master的时候是npm run build
-##### 而你们在服务器build的时候，无论是自动部署还是手动部署，只要知道了环境也就能分清是应该运行哪个命令
-
-
-## v 1.0.5 改动
-##### 添加html---hot reload，您需要在js文件中require，可查看index文件中index.js
-
-更多详细介绍可以查看  https://juejin.im/post/5b9116086fb9a05d05307e96
+        }),
+        //静态资源输出
+        new copyWebpackPlugin([{
+            from: path.resolve(__dirname, "../src/assets"),
+            to: './assets',
+            ignore: ['.*']
+        }]),
+        // 消除冗余的css代码
+        new purifyCssWebpack({
+            paths: glob.sync(path.join(__dirname, "../src/pages/*/*.html"))
+        })
+    ]
+```
+### 配置服务器
+```angular2html
+devServer: {
+        contentBase: path.join(__dirname, "../src"),
+        publicPath: '/',
+        historyApiFallback: true,
+        host: "127.0.0.1",
+        port: "8080",
+        overlay: true, // 浏览器页面上显示错误
+        open: true, // 开启浏览器
+        stats: "errors-only", //stats: "errors-only"表示只打印错误：
+        hot: true, // 开启热更新
+        //服务器代理配置项
+        proxy: {
+            '/testing/*': {
+                target: 'https://www.baidu.com',
+                secure: true,
+                changeOrigin: true
+            }
+        }
+    },
+```
+### package.json中的scripts
+"scripts": {
+    "dev": "cross-env NODE_ENV=development webpack-dev-server --config build/webpack.dev.conf.js ",
+    "build": "cross-env NODE_ENV=production webpack --config build/webpack.prod.conf.js"
+  },

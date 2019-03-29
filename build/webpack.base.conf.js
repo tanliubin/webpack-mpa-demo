@@ -27,6 +27,7 @@ const getHtmlConfig = function (name, chunks) {
     };
 };
 
+// 动态配置入口
 function getEntry() {
     const entry = {};
     //读取src目录所有page入口
